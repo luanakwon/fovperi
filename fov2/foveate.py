@@ -2,7 +2,7 @@ import numpy as np
 import math
 import torch
 
-def get_inv_FCG_mapping(nr,pmax,p0,c_gaze, dtype=np.int32):
+def get_inv_FCG_mapping(nr,p0,pmax,c_gaze, dtype=np.int32):
     """
     Returns inverse mapping of Foveal Cartesian Geometry.
     This inverse mapping is required for the cv2::remap to perform foveation
@@ -45,6 +45,28 @@ def get_inv_FCG_mapping(nr,pmax,p0,c_gaze, dtype=np.int32):
     Y = np.floor(Y_out*delta_p(XI)+y0).astype(dtype)
     return X,Y
 
+def get_FCG_revertFunc(nr,p0,pmax):
+    """
+    Returns the function to undo the FCG for a given coord value
+    To revert the radius info, calculate the D conversion
+    and use it as a multiplier
+    """
+    a = math.exp(1/nr*math.log(pmax/p0))
+    delta_p = lambda xi: (p0*a**xi)/(p0+xi) # xi = 1,2,...,Nr
+
+    def revertFunc(x):
+        """
+        x: Tensor of shape (B,2), in pixel coord (y,x),
+        x is assumed to have origin at the center of fovea
+        returns
+            y, x in pixel coord, origin at the center of fovea.
+            apply scale then translate to get the original image coord
+        """
+        xi = x.clip(torch.abs(x)-p0,0,nr)
+        x = x*delta_p(xi)
+        return x
+    
+    return revertFunc
 
 def batch_remap(src, base, scale, translate, borderValue=0):
     """
